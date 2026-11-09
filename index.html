@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地域医療MAP</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: sans-serif;
+    color: #333;
+    background: #f5f9ff;
+}
+
+header {
+    padding: 15px;
+    background: white;
+}
+
+h2 {
+    color: #1677df;
+    margin: 0 0 12px;
+}
+
+.search-area {
+    display: flex;
+    gap: 8px;
+}
+
+input, select, button {
+    padding: 11px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+input {
+    flex: 1;
+    min-width: 0;
+}
+
+button {
+    background: #1677df;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+#filter-area {
+    display: none;
+    padding-top: 10px;
+}
+
+#map {
+    width: 100%;
+    height: 65vh;
+}
+
+#hospital-card {
+    margin: 10px;
+    padding: 15px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px #ddd;
+}
+
+#hospital-card h3 {
+    margin: 0 0 8px;
+    color: #1677df;
+}
+
+#hospital-card p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.card-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.card-buttons button {
+    flex: 1;
+}
+
+nav {
+    display: flex;
+    justify-content: space-around;
+    padding: 13px 0;
+    background: white;
+    border-top: 1px solid #ddd;
+}
+
+nav a {
+    color: #555;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+nav a.active {
+    color: #1677df;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h2>✚ 地域医療MAP</h2>
+
+    <div class="search-area">
+        <input
+            type="text"
+            id="search"
+            placeholder="病院名や診療科を入力"
+        >
+        <button onclick="searchHospital()">検索</button>
+        <button onclick="toggleFilter()">絞り込み</button>
+    </div>
+
+    <div id="filter-area">
+        <label>診療科：</label>
+        <select id="department">
+            <option value="">すべて</option>
+            <option value="内科">内科</option>
+            <option value="小児科">小児科</option>
+            <option value="外科">外科</option>
+        </select>
+        <button onclick="filterHospital()">この条件で探す</button>
+    </div>
+</header>
+
+<!-- Googleマップ -->
+<div id="map"></div>
+
+<!-- 選択した病院の情報 -->
+<div id="hospital-card">
+    <h3>病院を選択してください</h3>
+    <p>地図上のマーカーをクリックすると病院情報が表示されます。</p>
+</div>
+
+<nav>
+    <a href="index.html">⌂<br>ホーム</a>
+    <a href="map.html" class="active">●<br>マップ</a>
+    <a href="notice.html">♧<br>お知らせ</a>
+    <a href="mypage.html">●<br>マイページ</a>
+</nav>
+
+<script>
+// 病院データ（現在は仮データ）
+const hospitals = [
+    {
+        id: 1,
+        name: "松山赤十字病院",
+        department: ["内科", "外科"],
+        lat: 33.849,
+        lng: 132.769,
+        address: "愛媛県松山市文京町1",
+        hours: "9:00～17:00",
+        url: "https://www.matsuyama.jrc.or.jp/"
+    },
+    {
+        id: 2,
+        name: "松山○○病院",
+        department: ["内科", "小児科"],
+        lat: 33.842,
+        lng: 132.765,
+        address: "愛媛県松山市○○町",
+        hours: "9:00～18:00",
+        url: ""
+    },
+    {
+        id: 3,
+        name: "愛媛○○クリニック",
+        department: ["小児科"],
+        lat: 33.855,
+        lng: 132.780,
+        address: "愛媛県松山市○○町",
+        hours: "8:30～17:30",
+        url: ""
+    }
+];
+
+let map;
+let markers = [];
+let currentHospital = null;
+
+// Googleマップの初期化
+async function initMap() {
+
+    const { Map } =
+        await google.maps.importLibrary("maps");
+
+    const { AdvancedMarkerElement } =
+        await google.maps.importLibrary("marker");
+
+    map = new Map(document.getElementById("map"), {
+        center: {
+            lat: 33.848,
+            lng: 132.765
+        },
+        zoom: 14,
+        mapId: "DEMO_MAP_ID",
+        mapTypeControl: false
+    });
+
+    // 病院マーカーを作成
+    hospitals.forEach(hospital => {
+
+        const marker = new AdvancedMarkerElement({
+            map: map,
+            position: {
+                lat: hospital.lat,
+                lng: hospital.lng
+            },
+            title: hospital.name
+        });
+
+        marker.addEventListener("gmp-click", () => {
+            showHospital(hospital);
+        });
+
+        markers.push(marker);
+    });
+}
+
+// 病院情報を表示
+function showHospital(hospital) {
+
+    currentHospital = hospital;
+
+    map.panTo({
+        lat: hospital.lat,
+        lng: hospital.lng
+    });
+
+    document.getElementById("hospital-card").innerHTML = `
+        <h3>${hospital.name}</h3>
+        <p>診療科：${hospital.department.join("・")}</p>
+        <p>診療時間：${hospital.hours}</p>
+        <p>住所：${hospital.address}</p>
+
+        <div class="card-buttons">
+            <button onclick="showRoute()">
+                この病院に行く
+            </button>
+
+            <button onclick="openReservation()">
+                公式サイトで予約する
+            </button>
+        </div>
+    `;
+}
+
+// 病院名・診療科で検索
+function searchHospital() {
+
+    const keyword =
+        document.getElementById("search").value.trim();
+
+    const hospital = hospitals.find(h =>
+        h.name.includes(keyword) ||
+        h.department.some(d => d.includes(keyword))
+    );
+
+    if (hospital) {
+        showHospital(hospital);
+        map.setZoom(16);
+    } else {
+        alert("該当する病院が見つかりません。");
+    }
+}
+
+// 絞り込み画面の表示
+function toggleFilter() {
+
+    const area = document.getElementById("filter-area");
+
+    area.style.display =
+        area.style.display === "block" ? "none" : "block";
+}
+
+// 診療科による絞り込み
+function filterHospital() {
+
+    const department =
+        document.getElementById("department").value;
+
+    markers.forEach((marker, index) => {
+
+        const hospital = hospitals[index];
+
+        marker.map =
+            !department ||
+            hospital.department.includes(department)
+                ? map
+                : null;
+    });
+}
+
+// 現在地から病院への経路
+function showRoute() {
+
+    if (!currentHospital) return;
+
+    const destination =
+        currentHospital.lat + "," + currentHospital.lng;
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+
+            const origin =
+                position.coords.latitude + "," +
+                position.coords.longitude;
+
+            const url =
+                "https://www.google.com/maps/dir/" +
+                origin + "/" + destination;
+
+            window.open(url, "_blank");
+        },
+        () => {
+            alert("現在地を取得できませんでした。");
+        }
+    );
+}
+
+// 病院の公式サイトへ移動
+function openReservation() {
+
+    if (!currentHospital || !currentHospital.url) {
+        alert("予約サイトが登録されていません。");
+        return;
+    }
+
+    window.open(currentHospital.url, "_blank");
+}
+
+// 現在地表示
+function showCurrentLocation() {
+
+    if (!navigator.geolocation) {
+        alert("現在地を取得できません。");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+
+            const location = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+
+            map.setCenter(location);
+            map.setZoom(16);
+
+            new google.maps.Marker({
+                position: location,
+                map: map,
+                title: "現在地"
+            });
+        },
+        () => {
+            alert("位置情報の利用を許可してください。");
+        }
+    );
+}
+</script>
+
+<!-- Google Maps API -->
+<script async
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAIGCyZPr1zSl_DuGOFbF39kc-wwrxBnYQ&loading=async&callback=initMap&v=weekly">
+</script>
+
+</body>
+</html>
