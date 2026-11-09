@@ -89,6 +89,48 @@ button {
     flex: 1;
 }
 
+.reviews {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+
+.reviews h4 {
+    margin: 0 0 6px;
+    font-size: 15px;
+}
+
+.reviews ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.reviews li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.reviews li:last-child {
+    border-bottom: none;
+}
+
+.stars {
+    color: #f5a623;
+    letter-spacing: 1px;
+}
+
+.review-date {
+    margin-left: 8px;
+    font-size: 12px;
+    color: #888;
+}
+
+button:disabled {
+    background: #bbb;
+    cursor: not-allowed;
+}
+
 nav {
     display: flex;
     justify-content: space-around;
@@ -164,7 +206,8 @@ const hospitals = [
         lng: 132.769,
         address: "愛媛県松山市文京町1",
         hours: "9:00～17:00",
-        url: "https://www.matsuyama.jrc.or.jp/"
+        url: "https://www.matsuyama.jrc.or.jp/",
+        reviews: []
     },
     {
         id: 2,
@@ -174,7 +217,11 @@ const hospitals = [
         lng: 132.765,
         address: "愛媛県松山市○○町",
         hours: "9:00～18:00",
-        url: ""
+        url: "",
+        reviews: [
+            { rating: 4, date: "2026-10-20", comment: "待ち時間は少し長いですが、説明が丁寧でした。（仮データ）" },
+            { rating: 5, date: "2026-10-28", comment: "子どもにも優しく接してくれました。（仮データ）" }
+        ]
     },
     {
         id: 3,
@@ -184,7 +231,10 @@ const hospitals = [
         lng: 132.780,
         address: "愛媛県松山市○○町",
         hours: "8:30～17:30",
-        url: ""
+        url: "",
+        reviews: [
+            { rating: 3, date: "2026-10-15", comment: "駐車場が狭いので注意が必要です。（仮データ）" }
+        ]
     }
 ];
 
@@ -220,7 +270,8 @@ async function initMap() {
                 lat: hospital.lat,
                 lng: hospital.lng
             },
-            title: hospital.name
+            title: hospital.name,
+            gmpClickable: true   // これが無いとクリックに反応しない
         });
 
         marker.addEventListener("gmp-click", () => {
@@ -231,8 +282,66 @@ async function initMap() {
     });
 }
 
+// 文字をHTMLとして解釈させないための変換
+// （病院データに < や " が含まれていても表示が崩れないようにする）
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+// 評価（1～5）を★☆の文字にする
+function createStars(rating) {
+    const count = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+    return "★".repeat(count) + "☆".repeat(5 - count);
+}
+
+// 口コミの表示部分を作る
+// ※今は病院データ内の仮データ（hospital.reviews）を使っている。
+//   サーバーに保存する形に変えるときは、この関数と病院データだけ直せばよい。
+function createReviewsHTML(reviews) {
+
+    if (!reviews || reviews.length === 0) {
+        return `
+            <div class="reviews">
+                <h4>口コミ</h4>
+                <p>口コミはまだありません。</p>
+            </div>
+        `;
+    }
+
+    const total = reviews.reduce(
+        (sum, review) => sum + (Number(review.rating) || 0), 0
+    );
+    const average = total / reviews.length;
+
+    const items = reviews.map(review => `
+        <li>
+            <span class="stars">${createStars(review.rating)}</span>
+            <span class="review-date">${escapeHTML(review.date)}</span>
+            <p>${escapeHTML(review.comment)}</p>
+        </li>
+    `).join("");
+
+    return `
+        <div class="reviews">
+            <h4>
+                口コミ
+                <span class="stars">${createStars(average)}</span>
+                ${average.toFixed(1)}（${reviews.length}件）
+            </h4>
+            <ul>${items}</ul>
+        </div>
+    `;
+}
+
 // 病院情報を表示
 function showHospital(hospital) {
+
+    if (!hospital) return;
 
     currentHospital = hospital;
 
@@ -241,22 +350,47 @@ function showHospital(hospital) {
         lng: hospital.lng
     });
 
-    document.getElementById("hospital-card").innerHTML = `
-        <h3>${hospital.name}</h3>
-        <p>診療科：${hospital.department.join("・")}</p>
-        <p>診療時間：${hospital.hours}</p>
-        <p>住所：${hospital.address}</p>
+    // 未登録の項目は「情報なし」と表示する
+    const departments =
+        hospital.department && hospital.department.length > 0
+            ? hospital.department.join("・")
+            : "情報なし";
+
+    const hours = hospital.hours || "情報なし";
+    const address = hospital.address || "情報なし";
+
+    // 電話番号が登録されている病院だけ、タップで発信できるリンクを出す
+    const telRow = hospital.tel
+        ? `<p>電話：<a href="tel:${escapeHTML(hospital.tel.replace(/[^\d+]/g, ""))}">${escapeHTML(hospital.tel)}</a></p>`
+        : "";
+
+    // 公式サイトが無い病院は予約ボタンを押せないようにする
+    const reserveButton = hospital.url
+        ? `<button onclick="openReservation()">公式サイトで予約する</button>`
+        : `<button disabled>予約サイト未登録</button>`;
+
+    const card = document.getElementById("hospital-card");
+
+    card.innerHTML = `
+        <h3>${escapeHTML(hospital.name)}</h3>
+        <p>診療科：${escapeHTML(departments)}</p>
+        <p>診療時間：${escapeHTML(hours)}</p>
+        <p>住所：${escapeHTML(address)}</p>
+        ${telRow}
 
         <div class="card-buttons">
             <button onclick="showRoute()">
                 この病院に行く
             </button>
 
-            <button onclick="openReservation()">
-                公式サイトで予約する
-            </button>
+            ${reserveButton}
         </div>
+
+        ${createReviewsHTML(hospital.reviews)}
     `;
+
+    // スマホでは地図の下にカードがあるので、カードが見える位置までスクロール
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 // 病院名・診療科で検索
